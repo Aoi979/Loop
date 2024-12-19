@@ -1,0 +1,10 @@
+[package]
+name = "Loop"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+log = "0.4.22"
+threadpool = { version = "1"}
+io-uring = { version = "0.6"}
+libc = "0.2.168"
