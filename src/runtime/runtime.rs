@@ -1,8 +1,10 @@
 use crate::driver::Driver;
-use crate::runtime::scheduler::TaskQueue;
+use crate::runtime::scheduler::{LocalScheduler, TaskQueue};
 use crate::scoped_thread_local;
 use crate::task::waker_fn::{dummy_waker, set_poll, should_poll};
 use std::future::Future;
+use std::thread::sleep;
+use crate::task::{new_task, JoinHandle};
 
 scoped_thread_local!(pub(crate) static CURRENT: Context);
 
@@ -72,10 +74,19 @@ impl<D> Runtime<D> {
                         while should_poll() {
                             // check if ready
                             if let std::task::Poll::Ready(t) = join.as_mut().poll(cx) {
+                                let mut max_round = self.context.tasks.len() * 2;
+                                while let Some(t) = self.context.tasks.pop() {
+                                    t.run();
+                                    if max_round == 0 {
+                                        // maybe there's a looping task
+                                        break;
+                                    } else {
+                                        max_round -= 1;
+                                    }
+                                }
                                 return t;
                             }
                         }
-
                         if self.context.tasks.is_empty() {
                             // No task to execute, we should wait for io blockingly
                             // Hot path
@@ -90,4 +101,20 @@ impl<D> Runtime<D> {
             })
         })
     }
+}
+pub fn spawn<T>(future: T) -> JoinHandle<T::Output>
+where
+    T: Future + 'static,
+    T::Output: 'static,
+{
+    let (task, join) = new_task(
+        crate::utils::thread_id::get_current_thread_id(),
+        future,
+        LocalScheduler,
+    );
+
+    CURRENT.with(|ctx| {
+        ctx.tasks.push(task);
+    });
+    join
 }

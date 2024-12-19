@@ -10,6 +10,7 @@ pub fn add(left: u64, right: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use std::thread::sleep;
     use super::*;
 
     #[test]
@@ -18,7 +19,10 @@ mod tests {
             .build()
             .unwrap();
         rt.block_on(async {
-            println!("it works1!");
+            runtime::runtime::spawn(async  {
+                println!("it works 0");
+            });
+            println!("it works1!")
         });
 
     }
