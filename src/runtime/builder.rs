@@ -1,8 +1,8 @@
-use std::{io, marker::PhantomData};
-use crate::driver::{Driver, IoUringDriver};
+use crate::driver::IoUringDriver;
 use crate::runtime::runtime::Runtime;
 use crate::scoped_thread_local;
 use crate::utils::thread_id::gen_id;
+use std::{io, marker::PhantomData};
 
 // ===== basic builder structure definition =====
 

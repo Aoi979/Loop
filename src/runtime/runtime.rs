@@ -2,9 +2,8 @@ use crate::driver::Driver;
 use crate::runtime::scheduler::{LocalScheduler, TaskQueue};
 use crate::scoped_thread_local;
 use crate::task::waker_fn::{dummy_waker, set_poll, should_poll};
-use std::future::Future;
-use std::thread::sleep;
 use crate::task::{new_task, JoinHandle};
+use std::future::Future;
 
 scoped_thread_local!(pub(crate) static CURRENT: Context);
 
@@ -72,7 +71,7 @@ impl<D> Runtime<D> {
 
                         // Check main future
                         while should_poll() {
-                            // check if ready
+                            // check
                             if let std::task::Poll::Ready(t) = join.as_mut().poll(cx) {
                                 let mut max_round = self.context.tasks.len() * 2;
                                 while let Some(t) = self.context.tasks.pop() {

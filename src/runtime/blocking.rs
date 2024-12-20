@@ -49,15 +49,6 @@ impl BlockingTask {
     pub fn run(mut self) {
         let task = self.task.take().unwrap();
         task.run();
-        // // if we are within a runtime, just run it.
-        // if crate::runtime::CURRENT.is_set() {
-        //     task.run();
-        //     return;
-        // }
-        // // if we are on a standalone thread, we will use thread local ctx as Context.
-        // crate::runtime::DEFAULT_CTX.with(|ctx| {
-        //     crate::runtime::CURRENT.set(ctx, || task.run());
-        // });
     }
 }
 
@@ -133,7 +124,7 @@ where
     fn poll(
         mut self: std::pin::Pin<&mut Self>,
         _cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Self::Output> {
+    ) -> Poll<Self::Output> {
         let me = &mut *self;
         let func = me.0.take().expect("blocking task ran twice.");
         Poll::Ready(Ok(func()))

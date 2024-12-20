@@ -1,6 +1,7 @@
 mod uring;
 pub(crate) mod op;
 mod util;
+mod file_io;
 
 use crate::driver::op::{CompletionMeta, Op, OpAble};
 use crate::driver::uring::Ops;
@@ -18,8 +19,6 @@ use crate::scoped_thread_local;
 #[allow(unused)]
 pub(crate) const CANCEL_USERDATA: u64 = u64::MAX;
 pub(crate) const TIMEOUT_USERDATA: u64 = u64::MAX - 1;
-#[allow(unused)]
-pub(crate) const EVENTFD_USERDATA: u64 = u64::MAX - 2;
 
 pub(crate) const MIN_REVERSED_USERDATA: u64 = u64::MAX - 3;
 
