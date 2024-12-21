@@ -3,6 +3,7 @@ mod utils;
 mod runtime;
 pub mod macros;
 mod driver;
+mod fs;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
@@ -10,7 +11,6 @@ pub fn add(left: u64, right: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use std::thread::sleep;
     use super::*;
 
     #[test]

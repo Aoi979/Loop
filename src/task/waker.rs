@@ -51,7 +51,7 @@ where
     S: Schedule,
 {
     let header = ptr as *const Header;
-    trace!("MONOIO DEBUG[Waker]: clone_waker");
+    trace!(" DEBUG[Waker]: clone_waker");
     (*header).state.ref_inc();
     raw_waker::<T, S>(header)
 }

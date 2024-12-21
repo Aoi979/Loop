@@ -2,7 +2,7 @@ use std::io;
 use io_uring::{opcode, types};
 use io_uring::squeue::Entry;
 use libc::c_int;
-use crate::driver::op::{Op, OpAble};
+use crate::driver::op::{Op, Mappable};
 
 pub(crate) struct Close {
     fd: c_int,
@@ -14,7 +14,7 @@ impl Op<Close> {
     }
 }
 
-impl OpAble for Close {
+impl Mappable for Close {
     const SKIP_CANCEL: bool = true;
 
     fn uring_op(&mut self) -> Entry {

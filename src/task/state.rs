@@ -161,7 +161,7 @@ impl State {
             }
         }) {
             Ok(_) => {
-                trace!("MONOIO DEBUG[State]: drop_join_handle_fast");
+                trace!(" DEBUG[State]: drop_join_handle_fast");
                 Ok(())
             }
             Err(_) => Err(()),
@@ -233,7 +233,7 @@ impl State {
         let prev = Snapshot(self.0.fetch_add(REF_ONE, Relaxed));
 
         trace!(
-            "MONOIO DEBUG[State]: ref_inc {}, ptr: {:p}",
+            " DEBUG[State]: ref_inc {}, ptr: {:p}",
             prev.ref_count() + 1,
             self
         );
@@ -249,7 +249,7 @@ impl State {
         let prev = Snapshot(self.0.fetch_sub(REF_ONE, AcqRel));
         debug_assert!(prev.ref_count() >= 1);
         trace!(
-            "MONOIO DEBUG[State]: ref_dec {}, ptr: {:p}",
+            " DEBUG[State]: ref_dec {}, ptr: {:p}",
             prev.ref_count() - 1,
             self
         );

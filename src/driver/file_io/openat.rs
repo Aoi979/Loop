@@ -2,7 +2,7 @@ use std::ffi::CString;
 use std::io;
 use std::path::Path;
 use io_uring::{opcode, types};
-use crate::driver::op::{Op, OpAble};
+use crate::driver::op::{Op, Mappable};
 use crate::driver::util::cstr;
 
 pub(crate) struct OpenAt {
@@ -31,7 +31,7 @@ impl Op<OpenAt> {
     }
 }
 
-impl OpAble for OpenAt {
+impl Mappable for OpenAt {
     const RET_IS_FD: bool = true;
     fn uring_op(&mut self) -> io_uring::squeue::Entry {
         opcode::OpenAt::new(types::Fd(self.fd), self.path.as_c_str().as_ptr())

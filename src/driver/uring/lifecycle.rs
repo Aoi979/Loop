@@ -52,6 +52,7 @@ impl Ref<'_, MaybeFdLifecycle> {
             Lifecycle::Submitted => {
                 *ref_mut = Lifecycle::Completed(result, flags);
             }
+            //note: the path is currently unreachable
             Lifecycle::Waiting(_) => {
                 let old = std::mem::replace(ref_mut, Lifecycle::Completed(result, flags));
                 match old {

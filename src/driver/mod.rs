@@ -1,10 +1,12 @@
-mod uring;
+pub mod file_io;
 pub(crate) mod op;
+mod uring;
 mod util;
-mod file_io;
 
-use crate::driver::op::{CompletionMeta, Op, OpAble};
+use crate::driver::op::{CompletionMeta, Mappable, Op};
 use crate::driver::uring::Ops;
+use crate::driver::util::timespec;
+use crate::scoped_thread_local;
 use io_uring::types::Timespec;
 use io_uring::{cqueue, opcode, IoUring};
 use std::cell::UnsafeCell;
@@ -13,15 +15,12 @@ use std::mem::ManuallyDrop;
 use std::rc::Rc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use crate::driver::util::timespec;
-use crate::scoped_thread_local;
 
 #[allow(unused)]
 pub(crate) const CANCEL_USERDATA: u64 = u64::MAX;
 pub(crate) const TIMEOUT_USERDATA: u64 = u64::MAX - 1;
 
 pub(crate) const MIN_REVERSED_USERDATA: u64 = u64::MAX - 3;
-
 
 pub struct IoUringDriver {
     inner: Rc<UnsafeCell<UringInner>>,
@@ -30,9 +29,8 @@ pub struct IoUringDriver {
     timespec: *mut Timespec,
 }
 
-
 pub(crate) struct UringInner {
-    /// In-flight operations
+    /// Record Submitted Operations
     ops: Ops,
 
     /// IoUring bindings
@@ -57,14 +55,14 @@ pub(crate) enum Inner {
     Uring(Rc<UnsafeCell<UringInner>>),
 }
 impl Inner {
-    fn submit_with<T: OpAble>(&self, data: T) -> io::Result<Op<T>> {
+    fn submit_with<T: Mappable>(&self, data: T) -> io::Result<Op<T>> {
         match self {
             Inner::Uring(this) => UringInner::submit_with_data(this, data),
         }
     }
 
     #[allow(unused)]
-    fn poll_op<T: OpAble>(
+    fn poll_op<T: Mappable>(
         &self,
         data: &mut T,
         index: usize,
@@ -74,8 +72,6 @@ impl Inner {
             Inner::Uring(this) => UringInner::poll_op(this, index, cx),
         }
     }
-
-
 
     #[inline]
     fn drop_op<T: 'static>(&self, index: usize, data: &mut Option<T>, skip_cancel: bool) {
@@ -94,7 +90,6 @@ impl Inner {
         false
     }
 }
-
 
 impl IoUringDriver {
     const DEFAULT_ENTRIES: u32 = 1024;
@@ -154,57 +149,38 @@ impl IoUringDriver {
     fn inner_park(&self, timeout: Option<Duration>) -> io::Result<()> {
         let inner = unsafe { &mut *self.inner.get() };
 
-        #[allow(unused_mut)]
-        let mut need_wait = true;
+        if timeout.is_some() {
+            Self::flush_space(inner, 1)?;
+        }
 
-        if need_wait {
-            // Install timeout and eventfd for unpark if sync is enabled
-
-            // 1. alloc spaces
-            let mut space = 0;
-            if timeout.is_some() {
-                space += 1;
-            }
-            if space != 0 {
-                Self::flush_space(inner, space)?;
-            }
-
-            // 2.3 install timeout and submit_and_wait with timeout
-            if let Some(duration) = timeout {
-                match inner.ext_arg {
-                    // Submit and Wait with timeout in an TimeoutOp way.
-                    // Better compatibility(5.4+).
-                    false => {
-                        self.install_timeout(inner, duration);
-                        inner.uring.submit_and_wait(1)?;
-                    }
-                    // Submit and Wait with enter args.
-                    // Better performance(5.11+).
-                    true => {
-                        let timespec = timespec(duration);
-                        let args = io_uring::types::SubmitArgs::new().timespec(&timespec);
-                        if let Err(e) = inner.uring.submitter().submit_with_args(1, &args) {
-                            if e.raw_os_error() != Some(libc::ETIME) {
-                                return Err(e);
-                            }
+        if let Some(duration) = timeout {
+            match inner.ext_arg {
+                // Submit and Wait with timeout in an TimeoutOp way.
+                // Better compatibility(5.4+).
+                false => {
+                    self.install_timeout(inner, duration);
+                    inner.uring.submit_and_wait(1)?;
+                }
+                // Submit and Wait with enter args.
+                // Better performance(5.11+).
+                true => {
+                    let timespec = timespec(duration);
+                    let args = io_uring::types::SubmitArgs::new().timespec(&timespec);
+                    if let Err(e) = inner.uring.submitter().submit_with_args(1, &args) {
+                        if e.raw_os_error() != Some(libc::ETIME) {
+                            return Err(e);
                         }
                     }
                 }
-            } else {
-                // Submit and Wait without timeout
-                inner.uring.submit_and_wait(1)?;
             }
         } else {
-            // Submit only
-            inner.uring.submit()?;
+            inner.uring.submit_and_wait(1)?;
         }
-
         // Process CQ
         inner.tick()?;
 
         Ok(())
     }
-
 }
 
 impl Driver for IoUringDriver {
@@ -230,8 +206,6 @@ impl Driver for IoUringDriver {
     }
 }
 
-
-
 impl UringInner {
     fn tick(&mut self) -> io::Result<()> {
         let cq = self.uring.completion();
@@ -242,7 +216,7 @@ impl UringInner {
                 _ if index >= MIN_REVERSED_USERDATA => (),
                 // # Safety
                 // Here we can make sure the result is valid.
-                _ => unsafe { self.ops.complete(index as _, resultify(&cqe), cqe.flags()) },
+                _ => unsafe { self.ops.complete(index as _, unwrap_to_result(&cqe), cqe.flags()) },
             }
         }
         Ok(())
@@ -252,20 +226,20 @@ impl UringInner {
         loop {
             match self.uring.submit() {
                 Err(ref e)
-                if matches!(e.raw_os_error(), Some(libc::EAGAIN) | Some(libc::EBUSY)) =>
-                    {
-                        // This error is constructed with io::Error::last_os_error():
-                        // https://github.com/tokio-rs/io-uring/blob/01c83bbce965d4aaf93ebfaa08c3aa8b7b0f5335/src/sys/mod.rs#L32
-                        // So we can use https://doc.rust-lang.org/nightly/std/io/struct.Error.html#method.raw_os_error
-                        // to get the raw error code.
-                        self.tick()?;
-                    }
+                    if matches!(e.raw_os_error(), Some(libc::EAGAIN) | Some(libc::EBUSY)) =>
+                {
+                    // This error is constructed with io::Error::last_os_error():
+                    // https://github.com/tokio-rs/io-uring/blob/01c83bbce965d4aaf93ebfaa08c3aa8b7b0f5335/src/sys/mod.rs#L32
+                    // So we can use https://doc.rust-lang.org/nightly/std/io/struct.Error.html#method.raw_os_error
+                    // to get the raw error code.
+                    self.tick()?;
+                }
                 e => return e.map(|_| ()),
             }
         }
     }
 
-    fn new_op<T: OpAble>(data: T, inner: &mut UringInner, driver: Inner) -> Op<T> {
+    fn new_op<T: Mappable>(data: T, inner: &mut UringInner, driver: Inner) -> Op<T> {
         Op {
             driver,
             index: inner.ops.insert(T::RET_IS_FD),
@@ -278,7 +252,7 @@ impl UringInner {
         data: T,
     ) -> io::Result<Op<T>>
     where
-        T: OpAble,
+        T: Mappable,
     {
         let inner = unsafe { &mut *this.get() };
         // If the submission queue is full, flush it to the kernel
@@ -291,7 +265,7 @@ impl UringInner {
 
         // Configure the SQE
         let data_mut = unsafe { op.data.as_mut().unwrap_unchecked() };
-        let sqe = OpAble::uring_op(data_mut).user_data(op.index as _);
+        let sqe = Mappable::uring_op(data_mut).user_data(op.index as _);
 
         {
             let mut sq = inner.uring.submission();
@@ -301,16 +275,6 @@ impl UringInner {
                 unimplemented!("when is this hit?");
             }
         }
-
-        // Submit the new operation. At this point, the operation has been
-        // pushed onto the queue and the tail pointer has been updated, so
-        // the submission entry is visible to the kernel. If there is an
-        // error here (probably EAGAIN), we still return the operation. A
-        // future `io_uring_enter` will fully submit the event.
-
-        // CHIHAI: We are not going to do syscall now. If we are waiting
-        // for IO, we will submit on `park`.
-        // let _ = inner.submit();
         Ok(op)
     }
 
@@ -323,7 +287,6 @@ impl UringInner {
         let lifecycle = unsafe { inner.ops.slab.get(index).unwrap_unchecked() };
         lifecycle.poll_op(cx)
     }
-
 
     pub(crate) fn drop_op<T: 'static>(
         this: &Rc<UnsafeCell<UringInner>>,
@@ -365,7 +328,7 @@ impl UringInner {
         }
     }
 }
-fn resultify(cqe: &cqueue::Entry) -> io::Result<u32> {
+fn unwrap_to_result(cqe: &cqueue::Entry) -> io::Result<u32> {
     let res = cqe.result();
 
     if res >= 0 {

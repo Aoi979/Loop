@@ -8,7 +8,7 @@ use std::{io, marker::PhantomData};
 
 /// Runtime builder
 pub struct RuntimeBuilder<D> {
-    // iouring entries
+    // io_uring entries
     entries: Option<u32>,
 
     urb: io_uring::Builder,
@@ -20,14 +20,6 @@ pub struct RuntimeBuilder<D> {
 scoped_thread_local!(pub(crate) static BUILD_THREAD_ID: usize);
 
 impl<T> Default for RuntimeBuilder<T> {
-    /// Create a default runtime builder.
-    ///
-    /// # Note
-    ///
-    /// When the sync feature is enabled, the default behavior of
-    /// [monoio::blocking::BlockingStrategy] is to execute tasks on the local thread. In other
-    /// words, there is no thread pool involved—all blocking I/O operations and heavy computations
-    /// will block the current thread.
     #[must_use]
     fn default() -> Self {
         RuntimeBuilder::<T>::new()
@@ -35,14 +27,6 @@ impl<T> Default for RuntimeBuilder<T> {
 }
 
 impl<T> RuntimeBuilder<T> {
-    /// Create a default runtime builder.
-    ///
-    /// # Note
-    ///
-    /// When the sync feature is enabled, the default behavior of
-    /// [monoio::blocking::BlockingStrategy] is to execute tasks on the local thread. In other
-    /// words, there is no thread pool involved—all blocking I/O operations and heavy computations
-    /// will block the current thread.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -120,29 +104,3 @@ impl<D> RuntimeBuilder<D> {
     }
 }
 
-// ===== FusionDriver =====
-
-/// Fake driver only for conditionally building.
-pub struct FusionDriver;
-pub enum FusionRuntime<L> {
-    /// Uring driver based runtime.
-    Uring(Runtime<L>),
-}
-impl RuntimeBuilder<FusionDriver> {
-
-    /// Build the runtime.
-    pub fn build(self) -> io::Result<FusionRuntime<IoUringDriver>> {
-        let builder = RuntimeBuilder::<IoUringDriver> {
-            entries: self.entries,
-            urb: self.urb,
-            _mark: PhantomData,
-        };
-        Ok(builder.build()?.into())
-    }
-}
-
-impl From<Runtime<IoUringDriver>> for FusionRuntime<IoUringDriver> {
-    fn from(r: Runtime<IoUringDriver>) -> Self {
-        Self::Uring(r)
-    }
-}

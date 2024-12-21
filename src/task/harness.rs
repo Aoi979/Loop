@@ -51,7 +51,7 @@ where
 {
     /// Polls the inner future.
     pub(super) fn poll(self) {
-        trace!("MONOIO DEBUG[Harness]:: poll");
+        trace!(" DEBUG[Harness]:: poll");
         match self.poll_inner() {
             PollFuture::Notified => {
                 // We should re-schedule the task.
@@ -90,7 +90,7 @@ where
     }
 
     pub(super) fn dealloc(self) {
-        trace!("MONOIO DEBUG[Harness]:: dealloc");
+        trace!(" DEBUG[Harness]:: dealloc");
 
         // Release the join waker, if there is one.
         self.trailer().waker.with_mut(drop);
@@ -109,14 +109,14 @@ where
 
     /// Read the task output into `dst`.
     pub(super) fn try_read_output(self, dst: &mut Poll<T::Output>, waker: &Waker) {
-        trace!("MONOIO DEBUG[Harness]:: try_read_output");
+        trace!(" DEBUG[Harness]:: try_read_output");
         if can_read_output(self.header(), self.trailer(), waker) {
             *dst = Poll::Ready(self.core().stage.take_output());
         }
     }
 
     pub(super) fn drop_join_handle_slow(self) {
-        trace!("MONOIO DEBUG[Harness]:: drop_join_handle_slow");
+        trace!(" DEBUG[Harness]:: drop_join_handle_slow");
 
         let mut maybe_panic = None;
 
@@ -153,7 +153,7 @@ where
     /// The caller does not need to hold a ref-count besides the one that was
     /// passed to this call.
     pub(super) fn wake_by_val(self) {
-        trace!("MONOIO DEBUG[Harness]:: wake_by_val");
+        trace!(" DEBUG[Harness]:: wake_by_val");
         let owner_id = self.header().owner_id;
         if is_remote_task(owner_id) {
             if self.header().state.transition_to_notified_without_submit() {
@@ -161,7 +161,7 @@ where
                 return;
             }
             // send to target thread
-            trace!("MONOIO DEBUG[Harness]:: wake_by_val with another thread id");
+            trace!(" DEBUG[Harness]:: wake_by_val with another thread id");
 
             {
                 panic!("waker can only be sent across threads when `sync` feature enabled");
@@ -185,7 +185,7 @@ where
     /// caller should hold a ref-count.  This will create a new Notified and
     /// submit it if necessary.
     pub(super) fn wake_by_ref(&self) {
-        trace!("MONOIO DEBUG[Harness]:: wake_by_ref");
+        trace!(" DEBUG[Harness]:: wake_by_ref");
         let owner_id = self.header().owner_id;
         if is_remote_task(owner_id) {
             if self.header().state.transition_to_notified_without_submit() {
@@ -193,7 +193,7 @@ where
             }
 
             // send to target thread
-            trace!("MONOIO DEBUG[Harness]:: wake_by_ref with another thread id");
+            trace!(" DEBUG[Harness]:: wake_by_ref with another thread id");
 
             {
                 panic!("waker can only be sent across threads when `sync` feature enabled");
@@ -212,7 +212,7 @@ where
     }
 
     pub(super) fn drop_reference(self) {
-        trace!("MONOIO DEBUG[Harness]:: drop_reference");
+        trace!(" DEBUG[Harness]:: drop_reference");
         if self.header().state.ref_dec() {
             self.dealloc();
         }

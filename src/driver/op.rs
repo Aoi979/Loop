@@ -10,7 +10,7 @@ use crate::driver;
 
 
 /// In-flight operation
-pub(crate) struct Op<T: 'static + OpAble> {
+pub(crate) struct Op<T: 'static + Mappable> {
     // Driver running the operation
     pub(super) driver: driver::Inner,
 
@@ -111,7 +111,7 @@ impl Drop for MaybeFd {
     }
 }
 
-pub(crate) trait OpAble {
+pub(crate) trait Mappable {
     const RET_IS_FD: bool = false;
     const SKIP_CANCEL: bool = false;
     fn uring_op(&mut self) -> io_uring::squeue::Entry;
@@ -120,7 +120,7 @@ pub(crate) trait OpAble {
 
 
 
-impl<T: OpAble> Op<T> {
+impl<T: Mappable> Op<T> {
     /// Submit an operation to uring.
     ///
     /// `state` is stored during the operation tracking any state submitted to
@@ -148,7 +148,7 @@ impl<T: OpAble> Op<T> {
 
 impl<T> Future for Op<T>
 where
-    T: Unpin + OpAble + 'static,
+    T: Unpin + Mappable + 'static,
 {
     type Output = Completion<T>;
 
@@ -162,7 +162,7 @@ where
     }
 }
 
-impl<T: OpAble> Drop for Op<T> {
+impl<T: Mappable> Drop for Op<T> {
     #[inline]
     fn drop(&mut self) {
         self.driver
